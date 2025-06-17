@@ -58,7 +58,7 @@ function checkBody(body, keys) {
 // return the array of hastags found in the input text
 // if no hashtag found , return null
 function getHashtagsFromText(text) {
-  const pattern = /#\w+/g;
+  const pattern = /#\w+/gi;
   return text.match(pattern);
 }
 
