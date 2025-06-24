@@ -4,6 +4,8 @@ const { checkBody, getHashtagsFromText } = require("../modules/utils");
 const {
   sqlCreateNewTweetWithHashtags,
   sqlGetLastTweets,
+  sqlFindTweetById,
+  sqlDeleteTweet
 } = require("../db/queries");
 const { MAX_NB_TWEETS } = require("../modules/constants");
 // all routes require a token authentication
@@ -11,7 +13,10 @@ const { MAX_NB_TWEETS } = require("../modules/constants");
 const { authenticateToken } = require("../modules/auth_utils");
 router.use(authenticateToken);
 
-// Créez un wrapper autour de votre fonction
+// error classes
+class AuthError extends Error {}
+class NotFoundError extends Error {}
+
 // create a new tweet in the "Tweets table"
 // author is : loggedIn user (read from authentication token)
 // creation date is now() by default
@@ -34,9 +39,9 @@ router.post("/new", async (req, res) => {
 });
 
 // Get the last tweets that have been recently published
-// if "since" (id of latest downloaded tweet) is specified, 
+// if "since" (id of latest downloaded tweet) is specified,
 // the tweets are returned only if new tweets have been created
-// since the most recent downloaded tweet 
+// since the most recent downloaded tweet
 // query parameters :
 // since : id of the latest downloaded tweet
 // nbMaxTweets : max number of tweets to be returned
@@ -59,7 +64,7 @@ router.get("/", async (req, res) => {
   dayjs.extend(relativeTime);
   try {
     const user = req.user; // logged in user id
-    const response = await sqlGetLastTweets(user,latestId, nbTweets); // get the last tweets data
+    const response = await sqlGetLastTweets(user, latestId, nbTweets); // get the last tweets data
 
     if (response.result) {
       // re-format the returned data
@@ -68,6 +73,7 @@ router.get("/", async (req, res) => {
           id,
           created_at,
           message,
+          user_id,
           username,
           first_name,
           nb_likes,
@@ -77,7 +83,7 @@ router.get("/", async (req, res) => {
         const since = dayjs(created_at).fromNow();
         const tweet = {
           id,
-          author: { username, firstName: first_name },
+          author: {id:user_id, username, firstName: first_name },
           message,
           since,
           nbLikes: nb_likes,
@@ -85,12 +91,35 @@ router.get("/", async (req, res) => {
         };
         return tweet;
       });
-      return res.status(200).json({ result:true, lastTweets});
-    } 
-    return res.status(500).json(response)
+      return res.status(200).json({ result: true, lastTweets });
+    }
+    return res.status(500).json(response);
   } catch (err) {
-    return res.status(500).json({result:false, message:err.message});
+    return res.status(500).json({ result: false, message: err.message });
   }
 });
 
+router.delete("/:id", async (req, res) => {
+  const tweetId = req.params.id;
+  const user = req.user; // logged in user id
+  try {
+    const tweet = await sqlFindTweetById(tweetId);
+    if (!tweet) throw NotFoundError("Error: Tweet does not exist");
+    // only the author of a tweet can ask for its suppression
+    if (tweet.author != user)
+      throw AuthError("User Not allowed to delete this tweet");
+    const delRes = await sqlDeleteTweet(tweetId);
+    if (delRes.result)  return res.status(200).json(delRes);
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(403).json({ result: false, message: err.message });
+    } else if (err instanceof NotFoundError) {
+      return res.status(404).json({ result: false, message: err.message });
+    } else {
+      // Ici, on loggue le bug, et on envoie un message neutre à l'utilisateur
+      console.error("Unexpected Error : ", err);
+      return res.status(500).json({ result: false, message: "Server Error" });
+    }
+  }
+});
 module.exports = router;
