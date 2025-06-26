@@ -15,7 +15,7 @@ function prepareQueryParams(data) {
   const keys = Object.keys(data);
   const values = Object.values(data);
 
-  const columns = keys.join(", ");
+  const columns = keys.map(col=>`"${col}"`).join(", ");
   const placeholders = keys.map((_, i) => `$${i + 1}`).join(", ");
 
   return { columns, placeholders, values };
@@ -44,6 +44,33 @@ async function sqlFindOnequery(table, column, value) {
     throwSqlError(err, "Database findOne query failed");
   }
 }
+
+// generic query find one item in a table : search criteria ares specified
+// in the input "criteria" object  { column1: value1, column2: value2, ...}
+// return the full record if found, null otherwise
+async function sqlComplexFindOnequery(table, criteria) {
+  try {
+    // extract the column names and the searched values
+    const cols = Object.keys(criteria);
+    const vals = Object.values(criteria);
+
+    // generate the condition "WHERE column1= $1 AND column2= $2 AND...column n = $n"
+    const whereCondition = cols.length == 0
+        ? ""
+        : "WHERE " + cols.reduce(
+            (acc, cur, index) =>
+              acc + `"${cur}" = $${index + 1} ${index == cols.length - 1 ? "" : "AND "}`
+            ,"" );
+            
+    // the search query
+    const findQuery = `SELECT * from "${table}" ${whereCondition} LIMIT 1`;
+    // console.log(`findQuery =${findQuery}`)
+    const res = await pool.query(findQuery, vals);
+    return res.rows[0] || null;
+  } catch (err) {
+    throwSqlError(err, "Database findOne query failed");
+  }
+}
 async function sqlGetOrderedRecords(table, filterCol, ascending, limit) {
   const order = ascending ? "ASC" : "DESC";
   const getQuery = `SELECT * from ${table} ORDER BY ${filterCol} ${order} LIMIT $1`;
@@ -59,6 +86,7 @@ async function sqlGetOrderedRecords(table, filterCol, ascending, limit) {
 // in the form of an object : the keys  of this object match the columns of the table
 async function sqlInsertOneQuery(table, data) {
   const { columns, placeholders, values } = prepareQueryParams(data);
+  console.log (`{ columns, placeholders, values }= ${columns} , ${placeholders}, ${values} `)
   // the record creation query
   const query = `INSERT INTO "${table}" (${columns}) VALUES (${placeholders}) RETURNING *`;
 
@@ -293,7 +321,20 @@ async function sqlDeleteTweet(tweetId) {
     throw new Error(err.message);
   }
 }
+// --------------- "Likes" table  specific queries -----------
 
+// returns the Like of the input tweet by the input user, null if not found
+async function sqlFindLike(tweetId, userId) {
+  return sqlComplexFindOnequery("Likes",{tweet:tweetId, user:userId});
+}
+// creates a new record into the Likes table
+async function sqlAddLike(tweet, user) {
+  return sqlInsertOneQuery("Likes", {tweet, user});
+}
+// delete the Like that has the input id
+async function sqlDeleteLike(likeId) {
+  return sqlDeleteOnequery("Likes", likeId);
+}
 module.exports = {
   sqlFindUserByEmail,
   sqlFindUserByName,
@@ -308,4 +349,7 @@ module.exports = {
   sqlGetLastTweets,
   sqlFindTweetById,
   sqlDeleteTweet,
+  sqlFindLike, 
+  sqlAddLike,
+  sqlDeleteLike
 };

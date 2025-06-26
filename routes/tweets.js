@@ -5,7 +5,10 @@ const {
   sqlCreateNewTweetWithHashtags,
   sqlGetLastTweets,
   sqlFindTweetById,
-  sqlDeleteTweet
+  sqlDeleteTweet,
+  sqlFindLike,
+  sqlAddLike,
+  sqlDeleteLike
 } = require("../db/queries");
 const { MAX_NB_TWEETS } = require("../modules/constants");
 // all routes require a token authentication
@@ -14,9 +17,20 @@ const { authenticateToken } = require("../modules/auth_utils");
 router.use(authenticateToken);
 
 // error classes
-class AuthError extends Error {}
+class NotAllowedError extends Error {}
 class NotFoundError extends Error {}
 
+function errHandling(err, res) {
+  if (err instanceof NotAllowedError) {
+    return res.status(403).json({ result: false, message: err.message });
+  } else if (err instanceof NotFoundError) {
+    return res.status(404).json({ result: false, message: err.message });
+  } else {
+    // Ici, on loggue le bug, et on envoie un message neutre à l'utilisateur
+    console.error("Unexpected Error : ", err);
+    return res.status(500).json({ result: false, message: "Server Error" });
+  }
+}
 // create a new tweet in the "Tweets table"
 // author is : loggedIn user (read from authentication token)
 // creation date is now() by default
@@ -83,7 +97,7 @@ router.get("/", async (req, res) => {
         const since = dayjs(created_at).fromNow();
         const tweet = {
           id,
-          author: {id:user_id, username, firstName: first_name },
+          author: { id: user_id, username, firstName: first_name },
           message,
           since,
           nbLikes: nb_likes,
@@ -99,27 +113,65 @@ router.get("/", async (req, res) => {
   }
 });
 
+// delete the tweet that has the input id
+// side-effects : cascade delete of the likes et hashtags associations
+// return { result : boolean, message: string}
+// error cases : status 403 : user is not the author hence is not allowed to delete
+//               status 404 : tweet wit input id does not exist
+//               status 500 : db or http error
 router.delete("/:id", async (req, res) => {
   const tweetId = req.params.id;
   const user = req.user; // logged in user id
   try {
     const tweet = await sqlFindTweetById(tweetId);
-    if (!tweet) throw NotFoundError("Error: Tweet does not exist");
+    if (!tweet) throw new NotFoundError("Error: Tweet does not exist");
     // only the author of a tweet can ask for its suppression
     if (tweet.author != user)
-      throw AuthError("User Not allowed to delete this tweet");
+      throw new NotAllowedError("User Not allowed to delete this tweet");
     const delRes = await sqlDeleteTweet(tweetId);
-    if (delRes.result)  return res.status(200).json(delRes);
+    if (delRes.result) return res.status(200).json(delRes);
   } catch (err) {
-    if (err instanceof AuthError) {
-      return res.status(403).json({ result: false, message: err.message });
-    } else if (err instanceof NotFoundError) {
-      return res.status(404).json({ result: false, message: err.message });
-    } else {
-      // Ici, on loggue le bug, et on envoie un message neutre à l'utilisateur
-      console.error("Unexpected Error : ", err);
-      return res.status(500).json({ result: false, message: "Server Error" });
-    }
+    return errHandling(err, res);
+  }
+});
+// add a like from logged-in user to the tweet with input id
+// return { result: boolean, message : string}
+// error cases : 403 user has already liked the tweet only one like allowed
+//               404 tweet with input id does not exist
+//               500 db or http error
+router.post("/:id/like", async (req, res) => {
+  const tweetId = req.params.id;
+  const user = req.user; // logged in user id
+  try {
+    const tweet = await sqlFindTweetById(tweetId);
+    if (!tweet) throw new NotFoundError("Error: Tweet does not exist");
+    if (tweet.author == user)
+      throw new NotAllowedError("Error : You cannot like your own tweet ");
+    const like = await sqlFindLike(tweetId, user);
+    if (like) throw new NotAllowedError("Error: Cannot like a tweet twice");
+    const addLikeRes = await sqlAddLike(tweetId, user);
+    return res.status(200).json({result:true, message : "like successfully removed"});
+  } catch (err) {
+    return errHandling(err, res);
+  }
+});
+// remove the like of the tweet with input id
+// return { result: boolean, message : string}
+// error cases : 404 tweet with input id does not exist
+//               404 like does not exist
+//               500 db or http error
+router.delete("/:id/like", async (req, res) => {
+  const tweetId = req.params.id;
+  const user = req.user; // logged in user id
+  try {
+    const tweet = await sqlFindTweetById(tweetId);
+    if (!tweet) throw new NotFoundError("Error: Tweet does not exist");
+    const like = await sqlFindLike(tweetId, user);
+    if (!like) throw new NotFoundError("Error: You never liked this tweet");
+    const delLikeRes= sqlDeleteLike(like.id);
+    return res.status(200).json(delLikeRes);
+  } catch (err) {
+    return errHandling(err, res);
   }
 });
 module.exports = router;
