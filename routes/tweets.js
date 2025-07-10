@@ -82,7 +82,7 @@ router.get("/", async (req, res) => {
 
     if (response.result) {
       // re-format the returned data
-      const lastTweets = response.tweets.map((row) => {
+      const data = response.tweets.map((row) => {
         const {
           id,
           created_at,
@@ -105,7 +105,7 @@ router.get("/", async (req, res) => {
         };
         return tweet;
       });
-      return res.status(200).json({ result: true, lastTweets });
+      return res.status(200).json({ result: true, data });
     }
     return res.status(500).json(response);
   } catch (err) {

@@ -5,6 +5,8 @@ var logger = require('morgan');
 var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
 var tweetsRouter = require ('./routes/tweets');
+var hashtagsRouter= require('./routes/hashtags');
+
 var app = express();
 const cors = require('cors');
 const path = require('path');
@@ -24,6 +26,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
 app.use('/tweets', tweetsRouter);
+app.use('/hashtags', hashtagsRouter);
 
 logRoutes(app);
 

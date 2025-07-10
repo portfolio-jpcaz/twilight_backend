@@ -1,7 +1,6 @@
 // --------------- implementations of the backend's ------------
 // --------------- queries to the twilight db       ------------
 //
-
 const pool = require("./db");
 
 // ----------- UTILITIES ----------------------
@@ -335,6 +334,53 @@ async function sqlAddLike(tweet, user) {
 async function sqlDeleteLike(likeId) {
   return sqlDeleteOnequery("Likes", likeId);
 }
+
+// --------------- "Hastags" table  specific queries -----------
+
+// get the nbMaxHashtags hashtags that have the most occurences in the 
+// nbRecentTweets.
+// for each of these tweets get their total number of occurences
+// return { result : true, hashtags : [{hashtag:string, count:number},...]}
+// { result: false, message : string} in case of error
+async function sqlGetRecentTags(nbMaxHashtags, nbRecentTweets){
+  try {
+    // get the list of hashtags present in the nbRecentTweets latest tweets
+    const getRecentHashtagsQuery = `WITH recent_tweets AS (
+                SELECT id
+                FROM "Tweets"
+                ORDER BY created_at DESC
+                LIMIT ${nbRecentTweets} )
+                SELECT h.id 
+                FROM "Hashtags" as h
+                JOIN "TweetsHashtags" as th ON h.id = th.hashtag
+                JOIN recent_tweets as t ON th.tweet = t.id
+                GROUP BY h.id
+                `;
+    const res = await pool.query(getRecentHashtagsQuery );
+    const hashtags = res.rows.map(row=>row.id)|| [];// hashtags ids
+    let getHashTagsRes = { result:true, hashtags:[]}
+    if (hashtags.length){
+      // get the name, number of occurences of the obtained recent hashtags ids
+      const hashtagList = hashtags.join(","); // hashtags list of ids to be used in query
+      const getHashtagCountsQuery = `SELECT h.hashtag, COUNT(*) AS count
+                FROM "TweetsHashtags" th
+                JOIN "Hashtags" h ON th.hashtag = h.id
+                WHERE h.id IN (${hashtagList})
+                GROUP BY h.id, h.hashtag
+                ORDER BY count DESC
+                LIMIT ${nbMaxHashtags};`
+      const getCountsRes =await pool.query(getHashtagCountsQuery);
+      getHashTagsRes.data= getCountsRes.rows;
+    }
+
+    return getHashTagsRes;
+
+  }catch(err) {
+    return { result: false, message: err.message };
+  
+  }
+
+}
 module.exports = {
   sqlFindUserByEmail,
   sqlFindUserByName,
@@ -351,5 +397,6 @@ module.exports = {
   sqlDeleteTweet,
   sqlFindLike, 
   sqlAddLike,
-  sqlDeleteLike
+  sqlDeleteLike,
+  sqlGetRecentTags
 };

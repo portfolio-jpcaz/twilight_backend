@@ -1,7 +1,10 @@
 const APPLICATION_EMAIL = "TWILIGHT application admin";
 const VERIFICATION_SUBJECT = "Please confirm your inscription to TWILIGHT";
 const LINK_VALIDITY_DURATION = 24; // in hours
-const MAX_NB_TWEETS=20;
+const MAX_NB_TWEETS=50;// maximum number of tweets to be displayed
+const MAX_NB_HASHTAGS=10; // maximum number of hashtags taht appear in the trends section
+const TWEETS_SAMPLE_SIZE=200;// population size of the most recent tweets 
+                              // where to extract the most trendy hashtags from
 const WELCOME_MESSAGE = (
   firstname,
   verificationLink
@@ -30,5 +33,7 @@ module.exports = {
   RESET_PASSWORD_TOKEN_DURATION,
   RESET_PASSWORD_SUBJECT,
   RESET_PASSWORD_MESSAGE,
-  MAX_NB_TWEETS
+  MAX_NB_TWEETS,
+  MAX_NB_HASHTAGS,
+  TWEETS_SAMPLE_SIZE
 };
