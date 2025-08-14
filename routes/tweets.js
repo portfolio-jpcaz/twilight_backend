@@ -59,6 +59,7 @@ router.post("/new", async (req, res) => {
 // query parameters :
 // since : id of the latest downloaded tweet
 // nbMaxTweets : max number of tweets to be returned
+// hashtag (without # prefix): filter the returned tweets: only those containing this hashtag are returned
 // returns
 // { result: boolean,
 //   tweets: [  {
@@ -73,12 +74,14 @@ router.post("/new", async (req, res) => {
 router.get("/", async (req, res) => {
   const nbTweets = parseInt(req.query.nbMaxTweets, 10) || MAX_NB_TWEETS; // valeur par défaut
   const latestId = parseInt(req.query.since, 10);
+  const hashtag = req.query.hashtag || null;
+  // put back the # character that was not included in the URL
   const dayjs = require("dayjs");
   const relativeTime = require("dayjs/plugin/relativeTime");
   dayjs.extend(relativeTime);
   try {
     const user = req.user; // logged in user id
-    const response = await sqlGetLastTweets(user, latestId, nbTweets); // get the last tweets data
+    const response = await sqlGetLastTweets(user, latestId, nbTweets, hashtag); // get the last tweets data
 
     if (response.result) {
       // re-format the returned data

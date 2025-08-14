@@ -14,7 +14,7 @@ function prepareQueryParams(data) {
   const keys = Object.keys(data);
   const values = Object.values(data);
 
-  const columns = keys.map(col=>`"${col}"`).join(", ");
+  const columns = keys.map((col) => `"${col}"`).join(", ");
   const placeholders = keys.map((_, i) => `$${i + 1}`).join(", ");
 
   return { columns, placeholders, values };
@@ -54,13 +54,19 @@ async function sqlComplexFindOnequery(table, criteria) {
     const vals = Object.values(criteria);
 
     // generate the condition "WHERE column1= $1 AND column2= $2 AND...column n = $n"
-    const whereCondition = cols.length == 0
+    const whereCondition =
+      cols.length == 0
         ? ""
-        : "WHERE " + cols.reduce(
+        : "WHERE " +
+          cols.reduce(
             (acc, cur, index) =>
-              acc + `"${cur}" = $${index + 1} ${index == cols.length - 1 ? "" : "AND "}`
-            ,"" );
-            
+              acc +
+              `"${cur}" = $${index + 1} ${
+                index == cols.length - 1 ? "" : "AND "
+              }`,
+            ""
+          );
+
     // the search query
     const findQuery = `SELECT * from "${table}" ${whereCondition} LIMIT 1`;
     // console.log(`findQuery =${findQuery}`)
@@ -85,7 +91,9 @@ async function sqlGetOrderedRecords(table, filterCol, ascending, limit) {
 // in the form of an object : the keys  of this object match the columns of the table
 async function sqlInsertOneQuery(table, data) {
   const { columns, placeholders, values } = prepareQueryParams(data);
-  console.log (`{ columns, placeholders, values }= ${columns} , ${placeholders}, ${values} `)
+  console.log(
+    `{ columns, placeholders, values }= ${columns} , ${placeholders}, ${values} `
+  );
   // the record creation query
   const query = `INSERT INTO "${table}" (${columns}) VALUES (${placeholders}) RETURNING *`;
 
@@ -262,29 +270,54 @@ async function sqlCreateNewTweetWithHashtags(author, message, hashtags) {
 // as well as a boolean that is true if the tweet was liked by the logged in user
 // the tweets are returned only if new tweets have been created since the tweet with id "latestTweetId"
 // (usually obtained from a previous call)
+// if hashtag is given only the tweets that contain this hashtag are shown
 // return { result: true, tweets : [ {tweet id, tweet.created_at, tweet.message, author: {username, first_name}, nbLikes, is_liked}]}
 // if error returns { result: false, message : string }
-async function sqlGetLastTweets(loggedInUserId, latestTweetId, nbTweets) {
+async function sqlGetLastTweets(
+  loggedInUserId,
+  latestTweetId,
+  nbTweets,
+  hashtag = null
+) {
+  //WHERE condition : if hashtag is given, additional joins are necessary and LIKE condition is added
+  const hashtagCondition = hashtag
+    ? `JOIN "TweetsHashtags" as th on th.tweet = t.id
+       JOIN "Hashtags" as h on h.id =th.hashtag
+       WHERE (h.hashtag LIKE $4)`
+    : "";
   // complex query that lists the latest tweets (order by created_at desc)
   // for each tweet add a column that calculates the number of likes (joint on likes table)
   // add another boolean column  (number of times when logged in user is part of the likes >0)
-  const query = `select Tweets.id, Tweets.created_at, Tweets.message, 
-                        Users.id as user_id, Users.username, Users.first_name,
-                        COUNT(Likes.id) as nb_likes ,
-                        COUNT(Likes.id) FILTER (WHERE Likes.user = $1) > 0 AS is_liked
-                  from "Tweets" as Tweets 
-                  left join "Likes" as Likes on Tweets.id = Likes.tweet 
-                  JOIN "Users" as Users on  Users.id = Tweets.author 
-                  WHERE EXISTS( SELECT 1 From "Tweets" where id >$2 )
-                  GROUP BY Tweets.id,Users.id,Users.username,Users.first_name
-                  order by Tweets.created_at DESC
-                  LIMIT $3`;
+  const query = `WITH filteredTweets AS (
+    SELECT t.id, t.created_at, t.message, t.author
+    FROM "Tweets" t
+    ${hashtagCondition}
+    ),
+    has_new AS (
+    SELECT 1 FROM filteredTweets WHERE id > $2 LIMIT 1
+    )
+    SELECT
+      ft.id,
+      ft.created_at,
+      ft.message,
+      u.id AS user_id,
+      u.username,
+      u.first_name,
+      COUNT(l.id) AS nb_likes,
+      COUNT(l.id) FILTER (WHERE l.user = $1) > 0 AS is_liked
+    FROM filteredTweets ft
+    JOIN "Users" u ON u.id = ft.author
+    LEFT JOIN "Likes" l ON l.tweet = ft.id
+    WHERE EXISTS (SELECT 1 FROM has_new)     
+    GROUP BY ft.id,ft.created_at,ft.message, u.id, u.username, u.first_name
+    ORDER BY ft.created_at DESC
+    LIMIT $3;
+`;
+
   try {
-    const res = await pool.query(query, [
-      loggedInUserId,
-      latestTweetId,
-      nbTweets,
-    ]);
+    const values = [loggedInUserId, latestTweetId, nbTweets];
+    if (hashtag) values.push(`#${hashtag}%`);
+    const res = await pool.query(query, values);
     return { result: true, tweets: res.rows || [] };
   } catch (err) {
     return { result: false, message: err.message };
@@ -324,11 +357,11 @@ async function sqlDeleteTweet(tweetId) {
 
 // returns the Like of the input tweet by the input user, null if not found
 async function sqlFindLike(tweetId, userId) {
-  return sqlComplexFindOnequery("Likes",{tweet:tweetId, user:userId});
+  return sqlComplexFindOnequery("Likes", { tweet: tweetId, user: userId });
 }
 // creates a new record into the Likes table
 async function sqlAddLike(tweet, user) {
-  return sqlInsertOneQuery("Likes", {tweet, user});
+  return sqlInsertOneQuery("Likes", { tweet, user });
 }
 // delete the Like that has the input id
 async function sqlDeleteLike(likeId) {
@@ -337,12 +370,12 @@ async function sqlDeleteLike(likeId) {
 
 // --------------- "Hastags" table  specific queries -----------
 
-// get the nbMaxHashtags hashtags that have the most occurences in the 
+// get the nbMaxHashtags hashtags that have the most occurences in the
 // nbRecentTweets.
 // for each of these tweets get their total number of occurences
 // return { result : true, hashtags : [{hashtag:string, count:number},...]}
 // { result: false, message : string} in case of error
-async function sqlGetRecentTags(nbMaxHashtags, nbRecentTweets){
+async function sqlGetRecentTags(nbMaxHashtags, nbRecentTweets) {
   try {
     // get the list of hashtags present in the nbRecentTweets latest tweets
     const getRecentHashtagsQuery = `WITH recent_tweets AS (
@@ -356,10 +389,10 @@ async function sqlGetRecentTags(nbMaxHashtags, nbRecentTweets){
                 JOIN recent_tweets as t ON th.tweet = t.id
                 GROUP BY h.id
                 `;
-    const res = await pool.query(getRecentHashtagsQuery );
-    const hashtags = res.rows.map(row=>row.id)|| [];// hashtags ids
-    let getHashTagsRes = { result:true, hashtags:[]}
-    if (hashtags.length){
+    const res = await pool.query(getRecentHashtagsQuery);
+    const hashtags = res.rows.map((row) => row.id) || []; // hashtags ids
+    let getHashTagsRes = { result: true, data: [] };
+    if (hashtags.length) {
       // get the name, number of occurences of the obtained recent hashtags ids
       const hashtagList = hashtags.join(","); // hashtags list of ids to be used in query
       const getHashtagCountsQuery = `SELECT h.hashtag, COUNT(*) AS count
@@ -368,18 +401,15 @@ async function sqlGetRecentTags(nbMaxHashtags, nbRecentTweets){
                 WHERE h.id IN (${hashtagList})
                 GROUP BY h.id, h.hashtag
                 ORDER BY count DESC
-                LIMIT ${nbMaxHashtags};`
-      const getCountsRes =await pool.query(getHashtagCountsQuery);
-      getHashTagsRes.data= getCountsRes.rows;
+                LIMIT ${nbMaxHashtags};`;
+      const getCountsRes = await pool.query(getHashtagCountsQuery);
+      getHashTagsRes.data = getCountsRes.rows;
     }
 
     return getHashTagsRes;
-
-  }catch(err) {
+  } catch (err) {
     return { result: false, message: err.message };
-  
   }
-
 }
 module.exports = {
   sqlFindUserByEmail,
@@ -395,8 +425,8 @@ module.exports = {
   sqlGetLastTweets,
   sqlFindTweetById,
   sqlDeleteTweet,
-  sqlFindLike, 
+  sqlFindLike,
   sqlAddLike,
   sqlDeleteLike,
-  sqlGetRecentTags
+  sqlGetRecentTags,
 };

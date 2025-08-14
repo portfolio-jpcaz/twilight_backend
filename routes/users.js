@@ -306,11 +306,11 @@ router.post("/reset-password", async (req, res) => {
 // refresh the user's access token if expired
 router.post("/refresh_token", async (req, res) => {
   // get the refresh token
-  console.log("=== REFRESH TOKEN DEBUG ===");
+ /*  console.log("=== REFRESH TOKEN DEBUG ===");
   console.log("Headers:", req.headers);
   console.log("Cookie header:", req.headers.cookie);
   console.log("Parsed cookies:", req.cookies);
-  console.log("RefreshToken:", req.cookies?.refreshToken);
+  console.log("RefreshToken:", req.cookies?.refreshToken); */
   const refreshToken = req.cookies?.refreshToken;
   if (!refreshToken) {
     // no cookie with refresh token in request
