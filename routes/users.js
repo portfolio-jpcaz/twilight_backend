@@ -110,6 +110,8 @@ router.post("/signup", async (req, res) => {
 // about the user (name, firstname, email) : { result:true, accessToken, user }
 // otherwise returns an error message { result:false, message }
 router.post("/signin", async (req, res) => {
+  console.log('🔥 SIGNIN: Route appelée');
+  console.log('🔥 SIGNIN: Body reçu:', req.body);
   const { isValid, missing } = checkBody(req.body, ["username", "password"]);
   if (!isValid) {
     return res
@@ -118,6 +120,7 @@ router.post("/signin", async (req, res) => {
   }
   // check if the user exists
   const { username, password } = req.body;
+  console.log('🔥 SIGNIN: Avant requête DB');
   const user = await sqlFindUserByName(username);
   if (!user) {
     return res.status(401).json({ result: false, message: "Wrong username" });
