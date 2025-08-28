@@ -29,5 +29,6 @@ app.use('/tweets', tweetsRouter);
 app.use('/hashtags', hashtagsRouter);
 
 logRoutes(app);
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 module.exports = app;
