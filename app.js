@@ -11,7 +11,7 @@ var app = express();
 const cors = require('cors');
 const path = require('path');
 const logRoutes = require('./modules/debug_utils');
-
+const pool = require("./db/db");
 app.use(cors({
   origin: process.env.PUBLIC_FRONTEND_URL, 
   credentials: true               // allow httponly cookies in requests
@@ -29,6 +29,14 @@ app.use('/tweets', tweetsRouter);
 app.use('/hashtags', hashtagsRouter);
 
 logRoutes(app);
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/health', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT 1 AS ok');
+    res.json({ status: 'ok', db: r.rows[0].ok });
+  } catch (e) {
+    res.status(500).json({ status: 'db_error', code: e.code, message: e.message });
+  }
+});
+
 
 module.exports = app;
