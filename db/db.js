@@ -1,6 +1,7 @@
 // db.js
 const { Pool } = require('pg');
 try {
+  console.log("DATABASE_URL: "+process.env.DATABASE_URL);
   const u = new URL(process.env.DATABASE_URL || '');
   console.log('DB URL host seen by server:', u.host);
 } catch { console.log('DB URL invalid/undefined'); }
