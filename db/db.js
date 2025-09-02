@@ -12,6 +12,9 @@ const pool = new Pool({
     require: true,              // force TLS
     rejectUnauthorized: false,  // n'exige pas un CA public (cert Supabase ok)
   },
+  keepAlive: true,
+  connectionTimeoutMillis: 5000,
+  idleTimeoutMillis: 30000,
 });
 
 pool.on('connect', () => console.log('✅ PG pool connected'));
